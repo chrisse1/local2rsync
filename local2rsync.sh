@@ -201,7 +201,7 @@ backup_path() {
     local output
     if ! output=$(rsync -av --delete \
         "${RSYNC_PASSWORD_OPT[@]}" \
-        --backup-dir="_old/$name" \
+        --backup-dir="_old" \
         "$path" \
         "$BACKUP_SERVER/$name/" 2>&1); then
         errors=$((errors + 1))
