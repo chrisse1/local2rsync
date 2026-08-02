@@ -133,6 +133,7 @@ first_start_wizard() {
         }
         echo "BACKUP_TIME=\"$BACKUP_TIME\""
     } >"$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
 
     setup_cronjob "${BACKUP_TIME#*:}" "${BACKUP_TIME%:*}"
 }
@@ -142,17 +143,36 @@ first_start_wizard() {
 # ============================================================
 
 setup_cronjob() {
-    (crontab -l 2>/dev/null; \
-     echo "$1 $2 * * * /bin/bash $(realpath "$0") >> /var/log/local2rsync.log 2>&1") | crontab -
+    local script_path
+    script_path="$(realpath "$0")"
+    (crontab -l 2>/dev/null | grep -vF "$script_path"; \
+     echo "$1 $2 * * * /bin/bash $script_path >> $SCRIPT_DIR/local2rsync.log 2>&1") | crontab -
 }
 
 # ============================================================
 # Konfig laden
 # ============================================================
 
-[[ ! -f $CONFIG_FILE ]] && first_start_wizard
 check_arguments "$1"
+[[ ! -f $CONFIG_FILE ]] && first_start_wizard
+[[ -f $CONFIG_FILE ]] && chmod 600 "$CONFIG_FILE" 2>/dev/null
 source "$CONFIG_FILE"
+
+# ============================================================
+# Abhängigkeiten prüfen
+# ============================================================
+
+for cmd in rsync curl; do
+    if ! command -v "$cmd" &>/dev/null; then
+        echo "❌ '$cmd' ist nicht installiert."
+        exit 1
+    fi
+done
+
+if [[ $MARIADB_BACKUP == true ]] && ! command -v mysqldump &>/dev/null; then
+    echo "❌ MariaDB-Backup aktiviert, aber 'mysqldump' ist nicht installiert."
+    exit 1
+fi
 
 # ============================================================
 # rsync Passwortdatei prüfen
@@ -174,16 +194,41 @@ fi
 # ============================================================
 
 errors=0
+error_details=()
 
 backup_path() {
     IFS=":" read -r name path <<<"$1"
-    rsync -av --delete \
+    local output
+    if ! output=$(rsync -av --delete \
         "${RSYNC_PASSWORD_OPT[@]}" \
+        --backup-dir="_old/$name" \
         "$path" \
-        "$BACKUP_SERVER/$name/" || errors=$((errors + 1))
+        "$BACKUP_SERVER/$name/" 2>&1); then
+        errors=$((errors + 1))
+        error_details+=("Fehler beim Sichern von $name:" "$output")
+    fi
 }
 
-[[ $MARIADB_BACKUP == true ]] && echo "MariaDB-Backup hier wie gehabt"
+backup_mariadb() {
+    local dump_dir dump_output rsync_output
+    dump_dir=$(mktemp -d)
+
+    if ! dump_output=$(mysqldump -u"$MARIADB_USER" -p"$MARIADB_PASSWORD" --all-databases 2>&1 >"$dump_dir/all_databases.sql"); then
+        errors=$((errors + 1))
+        error_details+=("Fehler beim MariaDB-Dump:" "$dump_output")
+        rm -rf "$dump_dir"
+        return
+    fi
+
+    if ! rsync_output=$(rsync -av "${RSYNC_PASSWORD_OPT[@]}" "$dump_dir/" "$BACKUP_SERVER/mariadb_backup/" 2>&1); then
+        errors=$((errors + 1))
+        error_details+=("Fehler beim Hochladen des MariaDB-Dumps:" "$rsync_output")
+    fi
+
+    rm -rf "$dump_dir"
+}
+
+[[ $MARIADB_BACKUP == true ]] && backup_mariadb
 
 for p in "${BACKUP_PATHS[@]}"; do
     backup_path "$p"
@@ -196,9 +241,11 @@ done
 if [[ $errors -eq 0 ]]; then
     title="$BACKUP_TITLE-Backup erfolgreich"
     sound="cosmic"
+    message="Backup erfolgreich ohne Fehler abgeschlossen."
 else
     title="$BACKUP_TITLE-Backup FEHLER"
     sound="falling"
+    message=$(printf "Backup beendet mit %d Fehler(n):\n\n%s" "$errors" "$(printf '%s\n' "${error_details[@]}")")
 fi
 
 curl -s \
@@ -206,7 +253,7 @@ curl -s \
   --form-string "user=$PUSHOVER_USER" \
   --form-string "title=$title" \
   --form-string "sound=$sound" \
-  --form-string "message=Backup beendet mit $errors Fehler(n)" \
+  --form-string "message=$message" \
   https://api.pushover.net/1/messages.json >/dev/null
 
 exit $errors
