@@ -1,40 +1,34 @@
-# Backup-Skript mit Pushover-Benachrichtigungen
+# local2rsync
 
-Dieses Bash-Skript dient zur Sicherung von Verzeichnissen auf einem Remote-Backup-Server. Es bietet:
-- **Automatische Konfiguration** bei der ersten Ausführung.
-- **Einfache Verwaltung** der Backup-Einstellungen über einen interaktiven Konfigurationsdialog.
-- **Automatischer Skriptaufruf** durch das Anlegen eines täglichen Cronjobs mit Auswahlmöglichkeit der Uhrzeit.
-- **Benachrichtigungen** über den Status des Backups mit Pushover.
+Bash-Skript zur Sicherung lokaler Verzeichnisse (und optional einer MariaDB-Datenbank) auf einen rsync-Server, mit Statusmeldung per Pushover.
 
 ---
 
 ## **Funktionen**
-1. **Backup von Verzeichnissen**:
-   - Sichert ausgewählte Verzeichnisse auf einen Remote-Server via `rsync`.
-2. **Fehlerbenachrichtigung**:
-   - Benachrichtigt per Pushover über Erfolge und Fehler während des Backups.
-3. **First-Start-Wizard**:
-   - Führt bei der ersten Ausführung eine interaktive Einrichtung durch.
-4. **Konfigurationsdialog**:
-   - Ermöglicht das Hinzufügen, Ändern oder Löschen von Verzeichnissen und das Bearbeiten des Backup-Servers.
-5. **Protokollierung**:
-   - Erkennt und meldet detaillierte Fehler bei fehlgeschlagenen Backups.
+- **Backup von Verzeichnissen** per `rsync`, alte/überschriebene Dateien werden dabei versioniert unter `_old/` auf dem Server abgelegt statt einfach gelöscht.
+- **Optionales MariaDB-Backup**: `mysqldump --all-databases`, Upload per rsync.
+- **Pushover-Benachrichtigung** nach jedem Lauf, bei Fehlern inklusive Details.
+- **First-Start-Wizard** bei der ersten Ausführung, erneut aufrufbar mit `--configure`.
+- **Täglicher Cronjob** wird automatisch eingerichtet (Uhrzeit im Wizard wählbar).
 
 ---
 
 ## **Systemanforderungen**
-- **Bash** (Version 4.0 oder höher)
-- **rsync**: Für das Kopieren von Dateien und Verzeichnissen.
-- **curl**: Für das Senden von Benachrichtigungen über Pushover.
-- **Pushover-Konto**: Zum Senden von Benachrichtigungen.
-- **rsync-Server**: Auf den die Daten gesichert werden.
+- **Bash**
+- **rsync** – Backup und Datenübertragung
+- **curl** – Pushover-Benachrichtigungen
+- **mysqldump** – nur falls MariaDB-Backup aktiviert wird
+- **Pushover-Konto**
+- **rsync-Server** als Backup-Ziel
 
 ---
 
 ## **Installation**
-1. Klone das Repository oder lade das Skript herunter:
-   git clone https://github.com/chrisse1/backup_script.git
-2. cd backup-script
-3. chmod +x backup.sh
-4. ./backup.sh
-5. Folge den Anweisungen zur Konfiguration
+1. Repository klonen:
+   `git clone https://github.com/chrisse1/local2rsync.git`
+2. `cd local2rsync`
+3. `chmod +x local2rsync.sh`
+4. `./local2rsync.sh`
+5. Den Anweisungen des Wizards folgen.
+
+Zum späteren Anpassen der Konfiguration: `./local2rsync.sh --configure`
